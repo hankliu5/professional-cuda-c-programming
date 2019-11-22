@@ -5,23 +5,23 @@ C_APPS=
 all: ${C_APPS} ${CU_APPS}
 
 cusparse-matrix-matrix: cusparse-matrix-matrix.cu
-	nvcc -O2 -arch=sm_20 -o cusparse-matrix-matrix cusparse-matrix-matrix.cu -lcusparse
+	nvcc -O3 -arch=sm_75 -o cusparse-matrix-matrix cusparse-matrix-matrix.cu -lcusparse
 
 cublas-matrix-matrix: cublas-matrix-matrix.cu
-	nvcc -O2 -arch=sm_20 -o cublas-matrix-matrix cublas-matrix-matrix.cu -lcublas
+	nvcc -O3 -arch=sm_75 -o cublas-matrix-matrix cublas-matrix-matrix.cu -lcublas
 
 cublas-matrix-matrix-async: cublas-matrix-matrix-async.cu
-	nvcc -O2 -arch=sm_20 -o cublas-matrix-matrix-async cublas-matrix-matrix-async.cu -lcublas
+	nvcc -O3 -arch=sm_75 -o cublas-matrix-matrix-async cublas-matrix-matrix-async.cu -lcublas
 
 cufft-inverse: cufft-inverse.cu
-	nvcc -O2 -arch=sm_20 -o cufft-inverse cufft-inverse.cu -lcufft -lm
+	nvcc -O3 -arch=sm_75 -o cufft-inverse cufft-inverse.cu -lcufft -lm
 
 cusparse-matrix-matrix-double: cusparse-matrix-matrix-double.cu
-	nvcc -O2 -arch=sm_20 -o cusparse-matrix-matrix-double cusparse-matrix-matrix-double.cu -lcusparse
+	nvcc -O3 -arch=sm_75 -o cusparse-matrix-matrix-double cusparse-matrix-matrix-double.cu -lcusparse
 
 %: %.cu
-	nvcc -O2 -arch=sm_20 -o $@ $<
+	nvcc -O3 -arch=sm_75 -o $@ $<
 %: %.c
-	gcc -O2 -std=c99 -lm -o $@ $<
+	gcc -O3 -std=c99 -lm -o $@ $<
 clean:
 	rm -f ${CU_APPS} ${C_APPS}
