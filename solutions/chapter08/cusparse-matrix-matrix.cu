@@ -30,15 +30,15 @@ int generate_random_dense_matrix(int M, int N, float **outA)
             int r = rand();
             float *curr = A + (j * M + i);
 
-            if (r % 3 > 0)
-            {
-                *curr = 0.0f;
-            }
-            else
-            {
+            // if (r % 3 > 0)
+            // {
+            //     *curr = 0.0f;
+            // }
+            // else
+            // {
                 double dr = (double)r;
                 *curr = (dr / rMax) * 100.0;
-            }
+            // }
 
             if (*curr != 0.0f)
             {
@@ -97,11 +97,20 @@ void densemm(float *A, float *B, float *C, int nrows, int ncols) {
     }   
 }
 
+void transpose(float *A, float *At, int nrows, int ncols) {
+    int i, j;
+    for (i = 0; i < nrows; i++) {
+        for (j = 0; j < ncols; j++) {
+            At[j * ncols + i] = A[i * ncols + j];
+        }
+    }
+}
+
 
 int main(int argc, char **argv)
 {
-    float *A, *dA;
-    float *B, *dB;
+    float *A, *dA, *At;
+    float *B, *dB, *Bt;
     float *C, *dC;
     int M, N;
     int *dANnzPerRow;
@@ -122,8 +131,8 @@ int main(int argc, char **argv)
     int i;
 
     int totalANnz;
-    float alpha = 3.0f;
-    float beta = 4.0f;
+    float alpha = 1.0f;
+    float beta = 0.0f;
     cusparseHandle_t handle = 0;
     cusparseMatDescr_t Adescr = 0;
     clock_t start, diff;
@@ -149,10 +158,6 @@ int main(int argc, char **argv)
     print_matrix(A, M, N);
     printf("B:\n");
     print_matrix(B, N, M);
-
-    densemm(A, B, C, M, N);
-    printf("C:\n");
-    print_matrix(C, M, N);
 
     // Create the cuSPARSE handle
     CHECK_CUSPARSE(cusparseCreate(&handle));
@@ -196,7 +201,7 @@ int main(int argc, char **argv)
     }
 
     printf("totalANnz: %d\n", totalANnz);
-    printf("sparsity: %f\n", (float) totalANnz / (M * N));
+    printf("sparsity: %f\n", 1.0f - (float) totalANnz / (M * N));
 
     // Allocate device memory to store the sparse CSR representation of A
     start = clock();
@@ -226,6 +231,12 @@ int main(int argc, char **argv)
     CsrRowPtrA_cpu = (int *) malloc(sizeof(int) * (M + 1));
     CsrColIndA_cpu = (int *) malloc(sizeof(int) * totalANnz);
 
+    Bt = (float *)malloc(sizeof(float) * N * M);
+
+    transpose(B, Bt, M, N);
+    printf("Bt:\n");
+    print_matrix(Bt, N, M);
+
     // Convert A from a dense formatting to a CSR formatting, using the GPU
     printf("M: %d, N: %d\n", M, N);
     start = clock();
@@ -233,6 +244,15 @@ int main(int argc, char **argv)
     diff = clock() - start;
     printf("dense2csr: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
 
+    densemm(A, B, C, M, N);
+    printf("C = A * B:\n");
+    print_matrix(C, M, N);
+
+    densemm(A, Bt, C, M, N);
+    printf("C = A * Bt:\n");
+    print_matrix(C, M, N);
+
+    printf("\n");
     for (i = 0; i < totalANnz; i++) {
         printf("%f %f\n", CsrValA_cuda[i], CsrValA_cpu[i]);
     }
@@ -261,13 +281,18 @@ int main(int argc, char **argv)
     diff = clock() - start;
     printf("cudaMemcpy result dense matrix: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
 
-
     printf("C:\n");
-    print_matrix(C, M, M);
+    printf("Final results:\n");
+    for (int j=0; j<N; j++){
+        for (int i=0; i<M; i++){
+            printf("C[%d,%d]=%f\n",i,j,C[i+M*j]);
+        }
+    }
 
     free(A);
     free(B);
     free(C);
+    free(Bt);
 
     free(CsrValA_cuda);
     free(CsrRowPtrA_cuda);
