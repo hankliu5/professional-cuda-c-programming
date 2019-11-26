@@ -30,15 +30,15 @@ int generate_random_dense_matrix(int M, int N, float **outA)
             int r = rand();
             float *curr = A + (j * M + i);
 
-            // if (r % 3 > 0)
-            // {
-            //     *curr = 0.0f;
-            // }
-            // else
-            // {
+            if (r % 2 > 0)
+            {
+                *curr = 0.0f;
+            }
+            else
+            {
                 double dr = (double)r;
                 *curr = (dr / rMax) * 100.0;
-            // }
+            }
 
             if (*curr != 0.0f)
             {
@@ -79,7 +79,6 @@ void dense2csr(float *M, int nrows, int ncols, float *CsrVal, int *CsrRowPtr, in
         }
         CsrRowPtr[i+1] = num_of_NNZ;
     }
-    printf("counts: %d\n", count);
 }
 
 void densemm(float *A, float *B, float *C, int nrows, int ncols) {
@@ -109,8 +108,11 @@ void transpose(float *A, float *At, int nrows, int ncols) {
 
 int main(int argc, char **argv)
 {
-    float *A, *dA, *At;
-    float *B, *dB, *Bt;
+    float *A, *dA;
+    float *B, *dB;
+    int i, j, error = 0;
+    float *Bt;
+    float *cpu_C;
     float *C, *dC;
     int M, N;
     int *dANnzPerRow;
@@ -125,7 +127,6 @@ int main(int argc, char **argv)
 
     int totalANnz;
 
-    int i, j;
     float alpha = 1.0f;
     float beta = 0.0f;
     cusparseHandle_t handle = 0;
@@ -148,17 +149,19 @@ int main(int argc, char **argv)
     C = (float *)malloc(sizeof(float) * M * M);
     diff = clock() - start;
     printf("generate dataset: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
+    
+    cpu_C = (float *)malloc(sizeof(float) * M * M);
+    Bt = (float *)malloc(sizeof(float) * N * M);
+    transpose(B, Bt, M, N);
 
+#ifdef DEBUG
     printf("A:\n");
     print_matrix(A, M, N);
     printf("B:\n");
     print_matrix(B, N, M);
-
-    Bt = (float *)malloc(sizeof(float) * N * M);
-
-    transpose(B, Bt, M, N);
     printf("Bt:\n");
     print_matrix(Bt, N, M);
+#endif
 
     // Create the cuSPARSE handle
     CHECK_CUSPARSE(cusparseCreate(&handle));
@@ -211,14 +214,6 @@ int main(int argc, char **argv)
     CHECK(cudaMalloc((void **)&dCsrColIndA, sizeof(int) * totalANnz));
     diff = clock() - start;
     printf("cudaMalloc CSR matrix: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
-
-
-    // Convert A from a dense formatting to a CSR formatting, using the GPU
-    // start = clock();
-    // CHECK_CUSPARSE(cusparseSdense2csr(handle, M, N, Adescr, dA, M, dANnzPerRow,
-    //                                   dCsrValA, dCsrRowPtrA, dCsrColIndA));
-    // diff = clock() - start;
-    // printf("cusparseSdense2csr: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
         
     CsrValA_cpu = (float *) malloc(sizeof(float) * totalANnz);
     CsrRowPtrA_cpu = (int *) malloc(sizeof(int) * (M + 1));
@@ -235,14 +230,15 @@ int main(int argc, char **argv)
     CHECK(cudaMemcpy(dCsrRowPtrA, CsrRowPtrA_cpu, sizeof(int) * (M + 1), cudaMemcpyHostToDevice));
     CHECK(cudaMemcpy(dCsrColIndA, CsrColIndA_cpu, sizeof(int) * totalANnz, cudaMemcpyHostToDevice));
 
-    densemm(A, B, C, M, N);
-    printf("C = A * B:\n");
-    print_matrix(C, M, N);
+    start = clock();
+    densemm(A, Bt, cpu_C, M, N);
+    diff = clock() - start;
+    printf("cpu naive densemm: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
 
-    densemm(A, Bt, C, M, N);
+#ifdef DEBUG
     printf("C = A * Bt:\n");
-    print_matrix(C, M, N);
-    
+    print_matrix(cpu_C, M, N);
+#endif    
     
     // Perform matrix-matrix multiplication with the CSR-formatted matrix A
     start = clock();
@@ -259,18 +255,26 @@ int main(int argc, char **argv)
     diff = clock() - start;
     printf("cudaMemcpy result dense matrix: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
 
-    printf("C:\n");
-    printf("Final results:\n");
-    for (j = 0; j < N; j++){
-        for (i = 0; i < M; i++){
-            printf("C[%d,%d]=%f\n",i,j,C[i+M*j]);
+    for (j = 0; j < M; j++){
+        for (i = 0; i < M; i++) {
+            if (abs(C[i+M*j] - cpu_C[i*M+j]) > 1) {
+                printf("C[%d,%d]=%f, cpu_C[%d,%d]=%f\n",i,j,C[i+M*j],i,j,cpu_C[i*M+j]);
+                error++;
+            }
         }
     }
+    if (error) {
+        printf("Result incorrect\n");
+    }
+    else {
+        printf("pass\n");
+    }
+    free(Bt);
+    free(cpu_C);
 
     free(A);
     free(B);
     free(C);
-    free(Bt);
 
     free(CsrValA_cpu);
     free(CsrRowPtrA_cpu);
