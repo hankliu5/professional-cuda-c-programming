@@ -118,19 +118,14 @@ int main(int argc, char **argv)
     int *dCsrRowPtrA;
     int *dCsrColIndA;
 
-    // transfer by CUDA
-    float *CsrValA_cuda;
-    int *CsrRowPtrA_cuda;
-    int *CsrColIndA_cuda;
-
     // transfer by CPU
     float *CsrValA_cpu;
     int *CsrRowPtrA_cpu;
     int *CsrColIndA_cpu;
 
-    int i;
-
     int totalANnz;
+
+    int i, j;
     float alpha = 1.0f;
     float beta = 0.0f;
     cusparseHandle_t handle = 0;
@@ -158,6 +153,12 @@ int main(int argc, char **argv)
     print_matrix(A, M, N);
     printf("B:\n");
     print_matrix(B, N, M);
+
+    Bt = (float *)malloc(sizeof(float) * N * M);
+
+    transpose(B, Bt, M, N);
+    printf("Bt:\n");
+    print_matrix(Bt, N, M);
 
     // Create the cuSPARSE handle
     CHECK_CUSPARSE(cusparseCreate(&handle));
@@ -213,29 +214,15 @@ int main(int argc, char **argv)
 
 
     // Convert A from a dense formatting to a CSR formatting, using the GPU
-    start = clock();
-    CHECK_CUSPARSE(cusparseSdense2csr(handle, M, N, Adescr, dA, M, dANnzPerRow,
-                                      dCsrValA, dCsrRowPtrA, dCsrColIndA));
-    diff = clock() - start;
-    printf("cusparseSdense2csr: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
-    
-    CsrValA_cuda = (float *) malloc(sizeof(float) * totalANnz);
-    CsrRowPtrA_cuda = (int *) malloc(sizeof(int) * (M + 1));
-    CsrColIndA_cuda = (int *) malloc(sizeof(int) * totalANnz);
-    
-    CHECK(cudaMemcpy(CsrValA_cuda, dCsrValA, sizeof(float) * totalANnz, cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(CsrRowPtrA_cuda, dCsrRowPtrA, sizeof(int) * (M + 1), cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(CsrColIndA_cuda, dCsrColIndA, sizeof(int) * totalANnz, cudaMemcpyDeviceToHost));
-
+    // start = clock();
+    // CHECK_CUSPARSE(cusparseSdense2csr(handle, M, N, Adescr, dA, M, dANnzPerRow,
+    //                                   dCsrValA, dCsrRowPtrA, dCsrColIndA));
+    // diff = clock() - start;
+    // printf("cusparseSdense2csr: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
+        
     CsrValA_cpu = (float *) malloc(sizeof(float) * totalANnz);
     CsrRowPtrA_cpu = (int *) malloc(sizeof(int) * (M + 1));
     CsrColIndA_cpu = (int *) malloc(sizeof(int) * totalANnz);
-
-    Bt = (float *)malloc(sizeof(float) * N * M);
-
-    transpose(B, Bt, M, N);
-    printf("Bt:\n");
-    print_matrix(Bt, N, M);
 
     // Convert A from a dense formatting to a CSR formatting, using the GPU
     printf("M: %d, N: %d\n", M, N);
@@ -244,6 +231,10 @@ int main(int argc, char **argv)
     diff = clock() - start;
     printf("dense2csr: %ld msec\n", diff * 1000 / CLOCKS_PER_SEC);
 
+    CHECK(cudaMemcpy(dCsrValA, CsrValA_cpu, sizeof(float) * totalANnz, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dCsrRowPtrA, CsrRowPtrA_cpu, sizeof(int) * (M + 1), cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dCsrColIndA, CsrColIndA_cpu, sizeof(int) * totalANnz, cudaMemcpyHostToDevice));
+
     densemm(A, B, C, M, N);
     printf("C = A * B:\n");
     print_matrix(C, M, N);
@@ -251,19 +242,6 @@ int main(int argc, char **argv)
     densemm(A, Bt, C, M, N);
     printf("C = A * Bt:\n");
     print_matrix(C, M, N);
-
-    printf("\n");
-    for (i = 0; i < totalANnz; i++) {
-        printf("%f %f\n", CsrValA_cuda[i], CsrValA_cpu[i]);
-    }
-
-    for (i = 0; i < (M + 1); i++) {
-        printf("%d %d\n", CsrRowPtrA_cuda[i], CsrRowPtrA_cpu[i]);
-    }
-
-    for (i = 0; i < totalANnz; i++) {
-        printf("%d %d\n", CsrColIndA_cuda[i], CsrColIndA_cpu[i]);
-    }
     
     
     // Perform matrix-matrix multiplication with the CSR-formatted matrix A
@@ -283,8 +261,8 @@ int main(int argc, char **argv)
 
     printf("C:\n");
     printf("Final results:\n");
-    for (int j=0; j<N; j++){
-        for (int i=0; i<M; i++){
+    for (j = 0; j < N; j++){
+        for (i = 0; i < M; i++){
             printf("C[%d,%d]=%f\n",i,j,C[i+M*j]);
         }
     }
@@ -293,10 +271,6 @@ int main(int argc, char **argv)
     free(B);
     free(C);
     free(Bt);
-
-    free(CsrValA_cuda);
-    free(CsrRowPtrA_cuda);
-    free(CsrColIndA_cuda);
 
     free(CsrValA_cpu);
     free(CsrRowPtrA_cpu);
