@@ -1,5 +1,6 @@
 CU_APPS=cusparse-matrix-matrix access-ordering cublas-matrix-matrix \
-		cublas-matrix-matrix-async cufft-inverse cusparse-matrix-matrix-double
+		cublas-matrix-matrix-async cufft-inverse cusparse-matrix-matrix-double \
+		example
 C_APPS=
 
 all: ${C_APPS} ${CU_APPS}
@@ -18,6 +19,10 @@ cufft-inverse: cufft-inverse.cu
 
 cusparse-matrix-matrix-double: cusparse-matrix-matrix-double.cu
 	nvcc -O3 -arch=sm_75 -o cusparse-matrix-matrix-double cusparse-matrix-matrix-double.cu -lcusparse
+
+example: example.cu
+	nvcc -O3 -arch=sm_75 -o example example.cu -lcusparse
+
 
 %: %.cu
 	nvcc -O3 -arch=sm_75 -o $@ $<
